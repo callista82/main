@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 
 st.title("Visualisasi Medan Potensial (Grid Interpolation & Peta Anomali)")
