@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import os
 
-st.title("📊 Aplikasi Pencatat Waktu Proyek")
+st.title("Aplikasi Pencatat Waktu Proyek")
 
 CSV_FILE = "database_proyek.csv"
 
@@ -20,7 +20,7 @@ if not os.path.exists(CSV_FILE):
 # -----------------------------------------------------------
 df = pd.read_csv(CSV_FILE)
 
-st.subheader("📝 Input Data Proyek")
+st.subheader(" Input Data Proyek")
 
 # -----------------------------------------------------------
 # FORM INPUT
