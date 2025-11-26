@@ -1,95 +1,71 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-from datetime import datetime
+import datetime
 import os
+import altair as alt
 
-st.title("Aplikasi Pencatat Waktu Proyek")
+# ===============================
+# 1. LOAD / CREATE DATABASE CSV
+# ===============================
+FILE = "time_log.csv"
 
-CSV_FILE = "database_proyek.csv"
+if os.path.exists(FILE):
+    df = pd.read_csv(FILE)
+else:
+    df = pd.DataFrame(columns=["Project", "Start_Time", "End_Time", "Duration_hours"])
+    df.to_csv(FILE, index=False)
 
-# -----------------------------------------------------------
-# FUNGSI: Membuat file CSV jika belum ada
-# -----------------------------------------------------------
-if not os.path.exists(CSV_FILE):
-    df_init = pd.DataFrame(columns=["Proyek", "WaktuMulai", "WaktuSelesai", "DurasiJam"])
-    df_init.to_csv(CSV_FILE, index=False)
+st.title("Aplikasi Logbook Pencatat Waktu Proyek & Analisis Efisiensi")
 
-# -----------------------------------------------------------
-# LOAD DATA
-# -----------------------------------------------------------
-df = pd.read_csv(CSV_FILE)
+# ===============================
+# 2. INPUT FORM PENGISIAN DATA
+# ===============================
+st.subheader("Input Waktu Aktivitas")
 
-st.subheader(" Input Data Proyek")
+project_name = st.text_input("Nama Proyek / Aktivitas")
+start_time = st.time_input("Waktu Mulai", datetime.datetime.now().time())
+end_time = st.time_input("Waktu Selesai", datetime.datetime.now().time())
 
-# -----------------------------------------------------------
-# FORM INPUT
-# -----------------------------------------------------------
-with st.form("input_form"):
-    proyek = st.text_input("Nama Proyek / Aktivitas")
-    waktu_mulai = st.datetime_input("Waktu Mulai")
-    waktu_selesai = st.datetime_input("Waktu Selesai")
+# Hitung durasi otomatis
+start_dt = datetime.datetime.combine(datetime.date.today(), start_time)
+end_dt = datetime.datetime.combine(datetime.date.today(), end_time)
+duration_hours = (end_dt - start_dt).total_seconds() / 3600
 
-    submit = st.form_submit_button("Simpan Data")
-
-# -----------------------------------------------------------
-# PROSES PENYIMPANAN
-# -----------------------------------------------------------
-if submit:
-    if proyek == "":
-        st.error("Nama proyek tidak boleh kosong.")
-    elif waktu_selesai <= waktu_mulai:
-        st.error("Waktu selesai harus lebih besar dari waktu mulai.")
-    else:
-        durasi = (waktu_selesai - waktu_mulai).total_seconds() / 3600  # dalam jam
-
-        new_data = pd.DataFrame({
-            "Proyek": [proyek],
-            "WaktuMulai": [waktu_mulai],
-            "WaktuSelesai": [waktu_selesai],
-            "DurasiJam": [durasi]
-        })
-
-        # tambahkan ke CSV
+if st.button("Simpan Data"):
+    if project_name.strip() != "":
+        new_data = pd.DataFrame([[project_name, start_time, end_time, duration_hours]],
+                                columns=["Project", "Start_Time", "End_Time", "Duration_hours"])
+        
         df = pd.concat([df, new_data], ignore_index=True)
-        df.to_csv(CSV_FILE, index=False)
+        df.to_csv(FILE, index=False)
+        st.success(f"Data berhasil disimpan! Durasi = {duration_hours:.2f} jam")
+    else:
+        st.warning("Nama proyek harus diisi.")
 
-        st.success("Data berhasil disimpan!")
-
-# -----------------------------------------------------------
-# TAMPILKAN DATA
-# -----------------------------------------------------------
-st.subheader("📋 Data Aktivitas")
+# ===============================
+# 3. TAMPILKAN DATA
+# ===============================
+st.subheader(" Database Waktu")
 st.dataframe(df)
 
-# -----------------------------------------------------------
-# GRAFIK DURASI PER PROYEK
-# -----------------------------------------------------------
-st.subheader("📈 Grafik Durasi per Proyek")
+# ===============================
+# 4. VISUALISASI
+# ===============================
 
-if len(df) > 0:
-    fig, ax = plt.subplots()
-    df.groupby("Proyek")["DurasiJam"].sum().plot(kind="bar", ax=ax)
-    ax.set_ylabel("Durasi (jam)")
-    ax.set_title("Total Durasi per Proyek")
-    st.pyplot(fig)
-else:
-    st.info("Belum ada data untuk ditampilkan.")
+df["Date"] = pd.to_datetime(df["Start_Time"], errors='coerce')  # convert jika diperlukan
 
-# -----------------------------------------------------------
-# GRAFIK TREND WAKTU
-# -----------------------------------------------------------
-st.subheader("📉 Tren Waktu Penyelesaian")
+st.subheader("Grafik Durasi Per Proyek")
+chart_project = alt.Chart(df).mark_bar().encode(
+    x="Project",
+    y="Duration_hours",
+    tooltip=["Project", "Duration_hours"]
+)
+st.altair_chart(chart_project, use_container_width=True)
 
-if len(df) > 0:
-    df_sorted = df.sort_values("WaktuMulai")
-
-    fig2, ax2 = plt.subplots()
-    ax2.plot(df_sorted["WaktuMulai"], df_sorted["DurasiJam"], marker="o")
-    ax2.set_xlabel("Tanggal")
-    ax2.set_ylabel("Durasi (jam)")
-    ax2.set_title("Trend Durasi Aktivitas")
-    plt.xticks(rotation=45)
-    st.pyplot(fig2)
-else:
-    st.info("Belum ada data tren waktu.")
+st.subheader("Tren Waktu (Hari / Urutan Input)")
+chart_trend = alt.Chart(df.reset_index()).mark_line(point=True).encode(
+    x="index",
+    y="Duration_hours",
+    tooltip=["Project", "Duration_hours"]
+)
+st.altair_chart(chart_trend, use_container_width=True)
