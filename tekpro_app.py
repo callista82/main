@@ -137,6 +137,7 @@ if uploaded_file is not None:
 
     # Create KML document string
     kml_doc = f"""
+    
     <?xml version="1.0" encoding="UTF-8"?>
     <kml xmlns="http://www.opengis.net/kml/2.2">
     <Document>
