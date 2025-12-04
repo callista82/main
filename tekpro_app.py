@@ -1,179 +1,179 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
+from scipy.interpolate import griddata
+import io
+import zipfile
+import base64
+import urllib.parse
 
+st.set_page_config(layout="wide", page_title="Pemetaan Medan Potensial")
+st.title("Aplikasi Pemetaan Medan Potensial - Kontur & Heatmap")
+st.write("Upload CSV berisi kolom: X, Y, Value (separator koma).")
 
-# ========================
-# Fungsi-fungsi utama
-# ========================
+uploaded_file = st.file_uploader("Upload file CSV", type=["csv"]) 
 
-def load_data(csv_file):
-    """
-    Membaca file CSV dan memastikan kolom yang dibutuhkan ada.
-    Kolom yang dibutuhkan: X, Y, Anomali
-    """
-    df = pd.read_csv(csv_file)
-    required_cols = {"X", "Y", "Anomali"}
-    if not required_cols.issubset(df.columns):
-        raise ValueError(
-            f"File CSV harus memiliki kolom: {', '.join(required_cols)}. "
-            f"Kolom yang ada: {', '.join(df.columns)}"
-        )
-    return df
-
-
-def interpolate_grid(df, n_grid=100, method="cubic"):
-    """
-    Melakukan interpolasi ke grid teratur menggunakan scipy.griddata.
-
-    Parameters
-    ----------
-    df : DataFrame dengan kolom X, Y, Anomali
-    n_grid : ukuran grid (n_grid x n_grid)
-    method : 'linear', 'cubic', atau 'nearest'
-    """
-    x = df["X"].values
-    y = df["Y"].values
-    z = df["Anomali"].values
-
-    # Membuat grid teratur di domain X-Y
-    xi = np.linspace(x.min(), x.max(), n_grid)
-    yi = np.linspace(y.min(), y.max(), n_grid)
-    XI, YI = np.meshgrid(xi, yi)
-
-    # Interpolasi
-    ZI = griddata((x, y), z, (XI, YI), method=method)
-
-    return XI, YI, ZI
-
-
-def make_kml(df, name="Survei Medan Potensial"):
-    """
-    Membuat string file KML sederhana berisi titik-titik survei
-    yang dapat dibuka di Google Earth (desktop maupun web).
-    """
-    kml_header = f"""<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-<Document>
-    <name>{name}</name>
-    <description>Lokasi titik survei medan potensial</description>
-"""
-    kml_footer = """</Document>
-</kml>
-"""
-
-    placemarks = []
-    for _, row in df.iterrows():
-        x = row["X"]
-        y = row["Y"]
-        val = row["Anomali"]
-        placemark = f"""
-    <Placemark>
-        <name>Anomali: {val:.2f}</name>
-        <description>X={x}, Y={y}, Anomali={val}</description>
-        <!-- Asumsi X=longitude, Y=latitude (sesuaikan dengan data Anda) -->
-        <Point>
-            <coordinates>{x},{y},0</coordinates>
-        </Point>
-    </Placemark>
-"""
-        placemarks.append(placemark)
-
-    kml_body = "".join(placemarks)
-    kml_full = kml_header + kml_body + kml_footer
-    return kml_full
-
-
-def plot_contour(XI, YI, ZI, df, cmap="viridis", show_points=True):
-    """
-    Membuat plot kontur / heatmap menggunakan matplotlib.
-    """
-    fig, ax = plt.subplots()
-    # Heatmap / pcolormesh, masking NaN dulu supaya plot rapi
-    Z_masked = np.ma.array(ZI, mask=np.isnan(ZI))
-    pcm = ax.pcolormesh(XI, YI, Z_masked, shading="auto", cmap=cmap)
-    cbar = fig.colorbar(pcm, ax=ax)
-    cbar.set_label("Anomali")
-
-    if show_points:
-        ax.scatter(df["X"], df["Y"], s=20, edgecolor="k", facecolor="none", label="Titik data")
-        ax.legend()
-
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_title("Peta Anomali Medan Potensial (Interpolasi)")
-    ax.set_aspect("equal")
-
-    fig.tight_layout()
-    return fig
-
-
-# ========================
-# Aplikasi Streamlit
-# ========================
-
-def main():
-    st.title("Peta Anomali Medan Potensial")
-    st.write(
-        """
-Aplikasi ini:
-1. Mengimpor data survei medan potensial (X, Y, Anomali).
-2. Melakukan interpolasi ke grid teratur.
-3. Menampilkan visualisasi peta kontur / heatmap.
-4. Menghasilkan file **KML** yang bisa dibuka di **Google Earth**.
-"""
-    )
-
-    st.sidebar.header("Pengaturan")
-
-    # Pilihan contoh data
-    use_example = st.sidebar.checkbox("Gunakan data contoh", value=True)
-
-    uploaded_file = None
-    if not use_example:
-        uploaded_file = st.file_uploader("Upload file CSV (kolom: X, Y, Anomali)", type=["csv"])
-
-    # Parameter grid dan metode interpolasi
-    n_grid = st.sidebar.slider("Ukuran grid (resolusi)", min_value=30, max_value=200, value=100, step=10)
-    method = st.sidebar.selectbox("Metode interpolasi", ["linear", "cubic", "nearest"])
-    show_points = st.sidebar.checkbox("Tampilkan titik data", value=True)
-
-    # Muat data
-    if use_example:
-        st.subheader("Menggunakan data contoh")
-        df = load_data("data_survei_medan_potensial.csv")
+# Helper: value -> RGB (as hex rrggbb)
+def value_to_rgb_hex(v, vmin, vmax):
+    # Normalize 0..1
+    if np.isnan(v):
+        return 'ffffff'
+    t = (v - vmin) / (vmax - vmin) if vmax > vmin else 0.5
+    # Use a simple diverging map: blue -> white -> red
+    if t < 0.5:
+        # blue to white
+        t2 = t / 0.5
+        r = int(255 * t2 + 0 * (1 - t2))
+        g = int(255 * t2 + 0 * (1 - t2))
+        b = 255
     else:
-        if uploaded_file is None:
-            st.warning("Silakan upload file CSV terlebih dahulu atau aktifkan 'Gunakan data contoh'.")
-            return
-        df = load_data(uploaded_file)
+        # white to red
+        t2 = (t - 0.5) / 0.5
+        r = 255
+        g = int(255 * (1 - t2) + 255 * 0 * t2)
+        b = int(255 * (1 - t2) )
+    return f"{r:02x}{g:02x}{b:02x}"
 
-    st.write("### Data Survei (tabel)")
-    st.dataframe(df)
+# KML color format: aabbggrr
+def rgb_hex_to_kml_color(hexrgb, alpha=255):
+    r = hexrgb[0:2]
+    g = hexrgb[2:4]
+    b = hexrgb[4:6]
+    a = f"{alpha:02x}"
+    # KML wants aabbggrr
+    return a + b + g + r
 
-    # Interpolasi & plot
-    with st.spinner("Melakukan interpolasi dan membuat peta..."):
-        XI, YI, ZI = interpolate_grid(df, n_grid=n_grid, method=method)
-        fig = plot_contour(XI, YI, ZI, df, show_points=show_points)
+if uploaded_file is not None:
+    try:
+        df = pd.read_csv(uploaded_file)
+    except Exception as e:
+        st.error(f"Gagal membaca CSV: {e}")
+        st.stop()
+
+    # Check columns
+    cols = [c.lower() for c in df.columns]
+    # find X,Y,Value columns
+    try:
+        xi = [c for c in df.columns if c.lower().startswith('x')][0]
+        yi = [c for c in df.columns if c.lower().startswith('y')][0]
+        vi = [c for c in df.columns if (c.lower().startswith('v') or c.lower().startswith('value') or c.lower().startswith('z'))][0]
+    except Exception:
+        st.error('CSV harus punya kolom X, Y, Value (nama kolom bebas, minimal mengandung X, Y, dan Value/Z).')
+        st.stop()
+
+    x = df[xi].astype(float).values
+    y = df[yi].astype(float).values
+    val = df[vi].astype(float).values
+
+    # Grid resolution (adjustable)
+    col1, col2 = st.columns([1,3])
+    with col1:
+        res = st.slider('Resolusi grid (sisi, lebih besar = resolusi lebih rendah/butuh lebih cepat)', 50, 400, 200)
+        method = st.selectbox('Metode interpolasi', ['linear', 'cubic', 'nearest'])
+        show_contour = st.checkbox('Tampilkan kontur', value=True)
+        show_heatmap = st.checkbox('Tampilkan heatmap (imshow)', value=True)
+
+    # Create grid
+    xmin, xmax = x.min(), x.max()
+    ymin, ymax = y.min(), y.max()
+    xi_lin = np.linspace(xmin, xmax, res)
+    yi_lin = np.linspace(ymin, ymax, res)
+    XI, YI = np.meshgrid(xi_lin, yi_lin)
+    points = np.column_stack((x, y))
+
+    # Interpolate
+    try:
+        ZI = griddata(points, val, (XI, YI), method=method)
+    except Exception as e:
+        st.warning(f'Griddata error: {e}. Falling back to nearest.')
+        ZI = griddata(points, val, (XI, YI), method='nearest')
+
+    # Plot
+    with col2:
+        fig, ax = plt.subplots(figsize=(8,6))
+        vmin = np.nanmin(ZI)
+        vmax = np.nanmax(ZI)
+        if show_heatmap:
+            im = ax.imshow(np.flipud(ZI), extent=(xmin, xmax, ymin, ymax), aspect='auto')
+            plt.colorbar(im, ax=ax, label='Value')
+        if show_contour:
+            cs = ax.contour(XI, YI, ZI, 10, linewidths=0.7, colors='k')
+            ax.clabel(cs, inline=True, fontsize=8)
+        ax.scatter(x, y, c='white', s=8, edgecolors='black')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_title('Peta Medan Potensial')
         st.pyplot(fig)
 
-    # ========================
-    # Pembuatan file KML
-    # ========================
-    st.write("### Ekspor Lokasi ke Google Earth (KML)")
-    kml_name = st.text_input("Nama layer KML", value="Survei Medan Potensial")
-    if st.button("Buat file KML"):
-        kml_data = make_kml(df, name=kml_name)
-        st.download_button(
-            label="Download KML untuk Google Earth",
-            data=kml_data,
-            file_name="survei_medan_potensial.kml",
-            mime="application/vnd.google-earth.kml+xml",
-        )
-        st.info("Setelah di-download, buka file KML tersebut di Google Earth (desktop / web).")
+    # Export image to PNG
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
 
+    # Create KML (Point placemarks for each original point and optionally for grid centers)
+    kml_points = []
+    for xi_val, yi_val, v_val in zip(x, y, val):
+        hexrgb = value_to_rgb_hex(v_val, vmin, vmax)
+        kmlc = rgb_hex_to_kml_color(hexrgb, alpha=200)
+        desc = f"<![CDATA[Value: {v_val}]]>"
+        placemark = f"""
+        <Placemark>
+          <name>{v_val}</name>
+          <description>{desc}</description>
+          <Style>
+            <IconStyle>
+              <color>{kmlc}</color>
+              <scale>0.6</scale>
+              <Icon>
+                <href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href>
+              </Icon>
+            </IconStyle>
+          </Style>
+          <Point><coordinates>{xi_val},{yi_val},0</coordinates></Point>
+        </Placemark>
+        """
+        kml_points.append(placemark)
 
-if __name__ == "__main__":
-    main()
+    # Create KML document string
+    kml_doc = f"""
+    <?xml version="1.0" encoding="UTF-8"?>
+    <kml xmlns="http://www.opengis.net/kml/2.2">
+    <Document>
+      <name>Pemetaan Medan Potensial</name>
+      <description>Generated by Streamlit app</description>
+      {''.join(kml_points)}
+    </Document>
+    </kml>
+    """
+
+    # Make KMZ by zipping the KML and the PNG image (KMZ is just a zip with .kmz ext)
+    kmz_bytes = io.BytesIO()
+    with zipfile.ZipFile(kmz_bytes, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # write KML
+        zf.writestr('doc.kml', kml_doc)
+        # write image
+        zf.writestr('image.png', buf.getvalue())
+    kmz_bytes.seek(0)
+
+    # Provide download buttons
+    st.download_button('Download PNG (peta)', data=buf, file_name='peta.png', mime='image/png')
+    st.download_button('Download KML (placemarks)', data=kml_doc.encode('utf-8'), file_name='peta_points.kml', mime='application/vnd.google-earth.kml+xml')
+    st.download_button('Download KMZ (bisa dibuka di Google Earth)', data=kmz_bytes, file_name='peta.kmz', mime='application/vnd.google-earth.kmz')
+
+    # Provide direct data-URL link to KML (may open or download depending on browser)
+    kml_quoted = urllib.parse.quote(kml_doc)
+    data_url = f"data:application/vnd.google-earth.kml+xml;charset=utf-8,{kml_quoted}"
+    st.markdown(f"[Buka KML langsung (data URL) — klik kanan -> Open in new tab jika browser tidak otomatis mendownload]({data_url})")
+
+    # Attempt to create a Google Earth Web link (best-effort). Note: Google Earth Web may not accept raw KML via URL for large content.
+    ge_link = 'https://earth.google.com/web/search/?' + urllib.parse.urlencode({'kml': kml_doc})
+    st.markdown("---")
+    st.write("Jika ingin membuka di Google Earth Web: coba link berikut (jika tidak berhasil, gunakan tombol download KMZ lalu import di Google Earth):")
+    st.markdown(f"[Buka di Google Earth Web (best-effort)]({ge_link})")
+
+    st.info('Catatan: Untuk pengalaman lengkap di Google Earth (desktop/web), lebih andal menggunakan file KMZ yang di-download lalu di-open/import ke Google Earth.')
+
+else:
+    st.info('Silakan upload file CSV untuk memulai.')
+
