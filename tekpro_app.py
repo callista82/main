@@ -111,7 +111,7 @@ if uploaded_file is not None:
     fig.savefig(buf, format='png', bbox_inches='tight')
     buf.seek(0)
 
-   buf.seek(0)
+
 # ============================
 # SIMPAN HEATMAP SEBAGAI PNG (OVERLAY)
 # ============================
