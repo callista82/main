@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 import io
 import zipfile
-import base64
 import urllib.parse
 
 st.set_page_config(layout="wide", page_title="Pemetaan Medan Potensial")
@@ -92,73 +91,88 @@ if uploaded_file is not None:
     # Plot
     with col2:
         fig, ax = plt.subplots(figsize=(8,6))
+        # Handle case where ZI is all NaN (very unlikely but safe)
+        if np.all(np.isnan(ZI)):
+            st.error("Interpolasi menghasilkan semua NaN. Coba ubah metode atau resolusi grid, atau periksa data input.")
+            st.stop()
         vmin = np.nanmin(ZI)
         vmax = np.nanmax(ZI)
         if show_heatmap:
             im = ax.imshow(np.flipud(ZI), extent=(xmin, xmax, ymin, ymax), aspect='auto')
             plt.colorbar(im, ax=ax, label='Value')
         if show_contour:
-            cs = ax.contour(XI, YI, ZI, 10, linewidths=0.7, colors='k')
-            ax.clabel(cs, inline=True, fontsize=8)
+            # contour requires finite numbers; mask NaN
+            try:
+                cs = ax.contour(XI, YI, ZI, 10, linewidths=0.7, colors='k')
+                ax.clabel(cs, inline=True, fontsize=8)
+            except Exception:
+                # skip contour if it fails
+                pass
         ax.scatter(x, y, c='white', s=8, edgecolors='black')
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_title('Peta Medan Potensial')
         st.pyplot(fig)
 
-    # Export image to PNG
+    # Export image to PNG (original plot)
     buf = io.BytesIO()
     fig.savefig(buf, format='png', bbox_inches='tight')
     buf.seek(0)
 
+    # ============================
+    # SIMPAN HEATMAP SEBAGAI PNG (OVERLAY)
+    # ============================
+    # Prepare array for saving: replace NaN with vmin to avoid imsave issues
+    img = np.flipud(ZI.copy())
+    img = np.nan_to_num(img, nan=vmin)
 
-# ============================
-# SIMPAN HEATMAP SEBAGAI PNG (OVERLAY)
-# ============================
-heat_buf = io.BytesIO()
-plt.imsave(heat_buf, np.flipud(ZI), cmap='jet')
-heat_buf.seek(0)
+    heat_buf = io.BytesIO()
+    # Use matplotlib's imsave (specify format to ensure PNG)
+    plt.imsave(heat_buf, img, cmap='jet', format='png')
+    heat_buf.seek(0)
 
-# ============================
-# BUAT KML GROUND OVERLAY (ANTI ERROR XML)
-# ============================
-kml_doc = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + \
-"<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n" + \
-"<Document>\n" + \
-"  <name>Peta Heatmap Medan Potensial</name>\n" + \
-"  <GroundOverlay>\n" + \
-"    <name>Heatmap Overlay</name>\n" + \
-"    <Icon>\n" + \
-"      <href>heatmap.png</href>\n" + \
-"    </Icon>\n" + \
-"    <LatLonBox>\n" + \
-f"      <north>{ymax}</north>\n" + \
-f"      <south>{ymin}</south>\n" + \
-f"      <east>{xmax}</east>\n" + \
-f"      <west>{xmin}</west>\n" + \
-"    </LatLonBox>\n" + \
-"  </GroundOverlay>\n" + \
-"</Document>\n" + \
-"</kml>"
+    # ============================
+    # BUAT KML GROUND OVERLAY (ANTI ERROR XML)
+    # ============================
+    kml_doc = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + \
+    "<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n" + \
+    "<Document>\n" + \
+    "  <name>Peta Heatmap Medan Potensial</name>\n" + \
+    "  <GroundOverlay>\n" + \
+    "    <name>Heatmap Overlay</name>\n" + \
+    "    <Icon>\n" + \
+    "      <href>heatmap.png</href>\n" + \
+    "    </Icon>\n" + \
+    "    <LatLonBox>\n" + \
+    f"      <north>{ymax}</north>\n" + \
+    f"      <south>{ymin}</south>\n" + \
+    f"      <east>{xmax}</east>\n" + \
+    f"      <west>{xmin}</west>\n" + \
+    "    </LatLonBox>\n" + \
+    "  </GroundOverlay>\n" + \
+    "</Document>\n" + \
+    "</kml>"
 
-# ============================
-# BUNGKUS JADI KMZ
-# ============================
-kmz_bytes = io.BytesIO()
-with zipfile.ZipFile(kmz_bytes, 'w', zipfile.ZIP_DEFLATED) as zf:
-    zf.writestr("doc.kml", kml_doc)
-    zf.writestr("heatmap.png", heat_buf.getvalue())
+    # ============================
+    # BUNGKUS JADI KMZ
+    # ============================
+    kmz_bytes = io.BytesIO()
+    with zipfile.ZipFile(kmz_bytes, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("doc.kml", kml_doc)
+        zf.writestr("heatmap.png", heat_buf.getvalue())
+    kmz_bytes.seek(0)
 
-kmz_bytes.seek(0)
+    # ============================
+    # TOMBOL DOWNLOAD
+    # ============================
+    st.download_button(
+        "✅ Download Heatmap KMZ (Buka di Google Earth)",
+        kmz_bytes.getvalue(),
+        "heatmap_overlay.kmz",
+        mime="application/vnd.google-earth.kmz"
+    )
 
-# ============================
-# TOMBOL DOWNLOAD
-# ============================
-st.download_button(
-    "✅ Download Heatmap KMZ (Buka di Google Earth)",
-    kmz_bytes,
-    "heatmap_overlay.kmz",
-    mime="application/vnd.google-earth.kmz"
-)
+    st.success("✅ Heatmap siap dibuka di Google Earth Pro!")
 
-st.success("✅ Heatmap siap dibuka di Google Earth Pro!")
+else:
+    st.info('Silakan upload file CSV untuk memulai.')
