@@ -166,13 +166,13 @@ if uploaded_file is not None:
     # TOMBOL DOWNLOAD
     # ============================
     st.download_button(
-        "✅ Download Heatmap KMZ (Buka di Google Earth)",
+        " Download Heatmap KMZ (Buka di Google Earth)",
         kmz_bytes.getvalue(),
         "heatmap_overlay.kmz",
         mime="application/vnd.google-earth.kmz"
     )
 
-    st.success("✅ Heatmap siap dibuka di Google Earth Pro!")
+    st.success(" Heatmap siap dibuka di Google Earth Pro!")
 
 else:
     st.info('Silakan upload file CSV untuk memulai.')
