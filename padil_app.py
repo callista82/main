@@ -7,7 +7,7 @@ import altair as alt
 # ===============================
 # 1. LOAD / CREATE DATABASE CSV
 # ===============================
-FILE = "time_log.csv"
+FILE = "time_log.csv"   # file database
 
 if os.path.exists(FILE):
     df = pd.read_csv(FILE)
@@ -34,7 +34,6 @@ st.session_state.start_time = start_time
 
 end_time = st.time_input("Waktu Selesai", st.session_state.end_time, key="end_time_input")
 st.session_state.end_time = end_time
-
 
 # ===============================
 # 3. TAMPILKAN DATA
@@ -63,3 +62,4 @@ chart_trend = alt.Chart(df.reset_index()).mark_line(point=True).encode(
     tooltip=["Project", "Duration_hours"]
 )
 st.altair_chart(chart_trend, use_container_width=True)
+
