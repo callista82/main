@@ -20,9 +20,6 @@ st.title("Aplikasi Logbook Pencatat Waktu Proyek & Analisis Efisiensi")
 # ===============================
 # 2. INPUT FORM PENGISIAN DATA
 # ===============================
-st.subheader("Input Waktu Aktivitas")
-
-project_name = st.text_input("Nama Proyek / Aktivitas")
 
 if "start_time" not in st.session_state:
     st.session_state.start_time = datetime.datetime.now().time()
@@ -38,22 +35,6 @@ st.session_state.start_time = start_time
 end_time = st.time_input("Waktu Selesai", st.session_state.end_time, key="end_time_input")
 st.session_state.end_time = end_time
 
-
-# Hitung durasi otomatis
-start_dt = datetime.datetime.combine(datetime.date.today(), start_time)
-end_dt = datetime.datetime.combine(datetime.date.today(), end_time)
-duration_hours = (end_dt - start_dt).total_seconds() / 3600
-
-if st.button("Simpan Data"):
-    if project_name.strip() != "":
-        new_data = pd.DataFrame([[project_name, start_time, end_time, duration_hours]],
-                                columns=["Project", "Start_Time", "End_Time", "Duration_hours"])
-        
-        df = pd.concat([df, new_data], ignore_index=True)
-        df.to_csv(FILE, index=False)
-        st.success(f"Data berhasil disimpan! Durasi = {duration_hours:.2f} jam")
-    else:
-        st.warning("Nama proyek harus diisi.")
 
 # ===============================
 # 3. TAMPILKAN DATA
