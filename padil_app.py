@@ -23,9 +23,6 @@ st.title("Aplikasi Logbook Pencatat Waktu Proyek & Analisis Efisiensi")
 st.subheader("Input Waktu Aktivitas")
 
 project_name = st.text_input("Nama Proyek / Aktivitas")
-# ===============================
-# 2. INPUT FORM PENGISIAN DATA
-# ===============================
 
 if "start_time" not in st.session_state:
     st.session_state.start_time = datetime.datetime.now().time()
