@@ -19,16 +19,16 @@ if uploaded_file is not None:
         st.error(f"Gagal membaca CSV: {e}")
         st.stop()
 
-    # ============================
+
     # TAMPILKAN TABEL DATA SURVEI
-    # ============================
+
     st.subheader("Tabel Data Survei Medan Potensial")
     st.dataframe(df, use_container_width=True)
     st.write(f"Jumlah data: {len(df)} titik pengukuran")
 
-    # ============================
+
     # CEK KOLOM X, Y, VALUE
-    # ============================
+
     try:
         xi = [c for c in df.columns if c.lower().startswith('x')][0]
         yi = [c for c in df.columns if c.lower().startswith('y')][0]
@@ -41,9 +41,9 @@ if uploaded_file is not None:
     y = df[yi].astype(float).values
     val = df[vi].astype(float).values
 
-    # ============================
+
     # PENGATURAN INTERPOLASI
-    # ============================
+
     col1, col2 = st.columns([1,3])
     with col1:
         res = st.slider('Resolusi grid', 50, 400, 200)
@@ -51,9 +51,9 @@ if uploaded_file is not None:
         show_contour = st.checkbox('Tampilkan kontur', value=True)
         show_heatmap = st.checkbox('Tampilkan heatmap', value=True)
 
-    # ============================
+
     # BUAT GRID
-    # ============================
+
     xmin, xmax = x.min(), x.max()
     ymin, ymax = y.min(), y.max()
     xi_lin = np.linspace(xmin, xmax, res)
@@ -61,17 +61,17 @@ if uploaded_file is not None:
     XI, YI = np.meshgrid(xi_lin, yi_lin)
     points = np.column_stack((x, y))
 
-    # ============================
+
     # INTERPOLASI
-    # ============================
+
     try:
         ZI = griddata(points, val, (XI, YI), method=method)
     except:
         ZI = griddata(points, val, (XI, YI), method='nearest')
 
-    # ============================
+
     # PLOT PETA
-    # ============================
+  
     with col2:
         fig, ax = plt.subplots(figsize=(8,6))
 
@@ -93,9 +93,9 @@ if uploaded_file is not None:
 
         st.pyplot(fig)
 
-    # ============================
+    
     # SIMPAN HEATMAP PNG
-    # ============================
+  
     vmin = np.nanmin(ZI)
     img = np.flipud(ZI.copy())
     img = np.nan_to_num(img, nan=vmin)
@@ -104,9 +104,9 @@ if uploaded_file is not None:
     plt.imsave(heat_buf, img, cmap='jet', format='png')
     heat_buf.seek(0)
 
-    # ============================
+ 
     # BUAT FILE KML
-    # ============================
+
     kml_doc = f"""<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
@@ -127,18 +127,18 @@ if uploaded_file is not None:
 </kml>
 """
 
-    # ============================
+ 
     # BUNGKUS JADI KMZ
-    # ============================
+  
     kmz_bytes = io.BytesIO()
     with zipfile.ZipFile(kmz_bytes, 'w', zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("doc.kml", kml_doc)
         zf.writestr("heatmap.png", heat_buf.getvalue())
     kmz_bytes.seek(0)
 
-    # ============================
+ 
     # TOMBOL DOWNLOAD KMZ
-    # ============================
+  
     st.download_button(
         "Download Heatmap KMZ (Google Earth)",
         kmz_bytes.getvalue(),
